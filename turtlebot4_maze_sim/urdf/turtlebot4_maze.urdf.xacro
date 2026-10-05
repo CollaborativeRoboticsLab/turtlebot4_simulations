@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<robot name="turtlebot4" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="model" default="standard"/>
+  <xacro:include filename="$(find turtlebot4_description)/urdf/$(arg model)/turtlebot4.urdf.xacro"/>
+
+  <gazebo>
+    <plugin filename="libgz-sim-linearbatteryplugin-system.so" name="gz::sim::systems::LinearBatteryPlugin">
+      <battery_name>linear_battery</battery_name>
+      <voltage>16.8</voltage>
+      <open_circuit_voltage_constant_coef>16.8</open_circuit_voltage_constant_coef>
+      <open_circuit_voltage_linear_coef>-8.0</open_circuit_voltage_linear_coef>
+      <initial_charge>2.5</initial_charge>
+      <capacity>2.5</capacity>
+      <resistance>0.05</resistance>
+      <smooth_current_tau>2.0</smooth_current_tau>
+      <power_load>5.0</power_load>
+      <start_on_motion>true</start_on_motion>
+    </plugin>
+  </gazebo>
+</robot>

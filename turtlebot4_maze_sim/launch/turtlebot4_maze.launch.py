@@ -1,12 +1,47 @@
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, RegisterEventHandler, SetEnvironmentVariable, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction, RegisterEventHandler, SetEnvironmentVariable, TimerAction
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+
+
+def create_sensor_bridge(context):
+    world_name = LaunchConfiguration('world_name').perform(context)
+    robot_name = LaunchConfiguration('robot_name').perform(context)
+    model_prefix = f'/world/{world_name}/model/{robot_name}'
+    lidar_topic = f'{model_prefix}/link/rplidar_link/sensor/rplidar/scan'
+    camera_prefix = f'{model_prefix}/link/oakd_rgb_camera_frame/sensor/rgbd_camera'
+    image_topic = f'{camera_prefix}/image'
+    depth_topic = f'{camera_prefix}/depth_image'
+    camera_info_topic = f'{camera_prefix}/camera_info'
+    battery_topic = f'/model/{robot_name}/battery/linear_battery/state'
+
+    return [Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        namespace=robot_name,
+        arguments=[
+            f'{lidar_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+            f'{image_topic}@sensor_msgs/msg/Image[gz.msgs.Image',
+            f'{depth_topic}@sensor_msgs/msg/Image[gz.msgs.Image',
+            f'{camera_info_topic}@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            f'{battery_topic}@sensor_msgs/msg/BatteryState@gz.msgs.BatteryState',
+            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'
+        ],
+        remappings=[
+            (lidar_topic, 'scan'),
+            (image_topic, 'camera/image_raw'),
+            (depth_topic, 'camera/depth/image_raw'),
+            (camera_info_topic, 'camera/camera_info'),
+            (battery_topic, 'battery_state')
+        ],
+        output='screen'
+    )]
 
 
 def generate_launch_description():
@@ -38,11 +73,17 @@ def generate_launch_description():
         description='World name used by Gazebo Harmonic.'
     )
 
+    gui_arg = DeclareLaunchArgument(
+        'gui',
+        default_value='true',
+        choices=['true', 'false'],
+        description='Launch the Gazebo GUI; set false for headless mode.'
+    )
+
     robot_xacro = PathJoinSubstitution([
-        pkg_turtlebot4_description,
+        pkg_turtlebot4_maze_sim,
         'urdf',
-        LaunchConfiguration('model'),
-        'turtlebot4.urdf.xacro'
+        'turtlebot4_maze.urdf.xacro'
     ])
 
     robot_description = Command([
@@ -56,6 +97,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='robot_state_publisher',
+        namespace=LaunchConfiguration('robot_name'),
         output='screen',
         parameters=[
             {'use_sim_time': True},
@@ -64,13 +106,39 @@ def generate_launch_description():
         remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')]
     )
 
-    joint_state_publisher = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
-        name='joint_state_publisher',
-        output='screen',
-        parameters=[{'use_sim_time': True}],
-        remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')]
+    controller_manager = PathJoinSubstitution([
+        '/',
+        LaunchConfiguration('robot_name'),
+        'controller_manager'
+    ])
+
+    joint_state_broadcaster_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'joint_state_broadcaster',
+            '--controller-manager', controller_manager,
+            '--controller-manager-timeout', '60'
+        ],
+        output='screen'
+    )
+
+    diff_drive_controller_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'diffdrive_controller',
+            '--controller-manager', controller_manager,
+            '--controller-manager-timeout', '60'
+        ],
+        output='screen'
+    )
+
+    start_drive_controller = RegisterEventHandler(
+        OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[diff_drive_controller_spawner]
+        )
     )
 
     generate_robot_urdf = ExecuteProcess(
@@ -83,9 +151,16 @@ def generate_launch_description():
         output='screen'
     )
 
-    world_server = ExecuteProcess(
+    world_server_gui = ExecuteProcess(
+        cmd=['gz', 'sim', '-r', world_path],
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('gui'))
+    )
+
+    world_server_headless = ExecuteProcess(
         cmd=['gz', 'sim', '-s', '-r', world_path],
-        output='screen'
+        output='screen',
+        condition=UnlessCondition(LaunchConfiguration('gui'))
     )
 
     spawn_robot = ExecuteProcess(
@@ -102,6 +177,13 @@ def generate_launch_description():
         output='screen'
     )
 
+    spawn_controllers = RegisterEventHandler(
+        OnProcessExit(
+            target_action=spawn_robot,
+            on_exit=[TimerAction(period=2.0, actions=[joint_state_broadcaster_spawner])]
+        )
+    )
+
     spawn_after_description = RegisterEventHandler(
         OnProcessExit(
             target_action=generate_robot_urdf,
@@ -111,7 +193,15 @@ def generate_launch_description():
 
     ament_prefixes = [p for p in os.environ.get('AMENT_PREFIX_PATH', '').split(os.pathsep) if p]
     resource_paths = os.pathsep.join([p + '/share' for p in ament_prefixes])
-    library_paths = os.pathsep.join([p + '/lib' for p in ament_prefixes])
+    library_paths = os.pathsep.join(
+        [p + '/lib' for p in ament_prefixes] + [
+            os.path.join(
+                get_package_prefix('gz_sim_vendor'),
+                'opt', 'gz_sim_vendor', 'lib', 'gz-sim-8', 'plugins'
+            ),
+            os.environ.get('GZ_SIM_SYSTEM_PLUGIN_PATH', '')
+        ]
+    )
 
     return LaunchDescription([
         SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', resource_paths),
@@ -119,10 +209,14 @@ def generate_launch_description():
         model_arg,
         robot_name_arg,
         world_name_arg,
+        gui_arg,
         LogInfo(msg='Launching TurtleBot4 maze world in Gazebo Harmonic'),
         generate_robot_urdf,
         robot_state_publisher,
-        joint_state_publisher,
-        world_server,
+        OpaqueFunction(function=create_sensor_bridge),
+        world_server_gui,
+        world_server_headless,
         spawn_after_description,
+        spawn_controllers,
+        start_drive_controller,
     ])

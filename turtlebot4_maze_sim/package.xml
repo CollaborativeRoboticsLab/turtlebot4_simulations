@@ -11,9 +11,14 @@
 
   <depend>launch</depend>
   <depend>launch_ros</depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>diff_drive_controller</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <depend>xacro</depend>
   <depend>robot_state_publisher</depend>
-  <depend>joint_state_publisher</depend>
   <depend>ros_gz_sim</depend>
   <depend>ros_gz</depend>
   <depend>turtlebot4_description</depend>
