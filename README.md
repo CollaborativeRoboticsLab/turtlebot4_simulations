@@ -4,7 +4,9 @@ Gazebo Harmonic based simulations for TurtleBot4, contains following,
 
 | Simulation | Description | Package | Launch File |
 |------------|-------------|---------|-------------|
-| TurtleBot4 Maze | Standard TurtleBot4 in maze world | turtlebot4_maze_sim | turtlebot4_maze.launch.py |
+| TurtleBot4 Maze Small | Standard TurtleBot4 in maze world of size 10mx10m | turtlebot4_maze_sim | turtlebot4_maze_small.launch.py |
+| TurtleBot4 Maze Large | Standard TurtleBot4 in maze world of size 40mx40m | turtlebot4_maze_sim | turtlebot4_maze_large.launch.py |
+
 
 ## Build
 
@@ -16,24 +18,37 @@ colcon build
 
 ## Launch
 
-If using alongside a physical robot, or with a devcontainer that preconfigures environment variables, you need to unset the `ROS_DISCOVERY_SERVER` environment variable before launching the simulation:
+### Start a Gazebo simulation
 
-```bash
-unset ROS_DISCOVERY_SERVER
-ros2 daemon stop
-```
-
-Start the standard TurtleBot4 model:
+Start the standard TurtleBot4 model in the small 10 m x 10 m maze world:
 
 ```bash
 source install/setup.bash
-ros2 launch turtlebot4_maze_sim turtlebot4_maze.launch.py
+ros2 launch turtlebot4_maze_sim turtlebot4_maze_small.launch.py
 ```
 
-The Gazebo GUI is enabled by default. For a headless server-only run:
+Start the standard TurtleBot4 model in the large 40 m x 40 m world:
 
 ```bash
-ros2 launch turtlebot4_maze_sim turtlebot4_maze.launch.py gui:=false
+source install/setup.bash
+ros2 launch turtlebot4_maze_sim turtlebot4_maze_large.launch.py
+```
+
+The Gazebo GUI is enabled by default. For a headless server-only simulation, use the `gui:=false` argument:
+
+The large world combines three different navigation spaces in a single map:
+
+- a mostly empty open area of about 10 m x 10 m
+- a narrow corridor of about 2 m x 10 m
+- a dedicated maze section in one part of the map
+
+### Start the control stack
+
+Run the shared simulation navigation stack after the Gazebo world is already running. This launch file starts SLAM, Nav2, and RViz only, so it can be reused with future simulation worlds that publish the same namespaced TurtleBot4 topics.
+
+```bash
+source install/setup.bash
+ros2 launch turtlebot4_maze_sim sim_navigation.launch.py
 ```
 
 ## Control and telemetry

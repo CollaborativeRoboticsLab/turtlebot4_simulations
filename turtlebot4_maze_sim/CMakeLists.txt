@@ -3,7 +3,7 @@ project(turtlebot4_maze_sim)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY launch worlds urdf
+install(DIRECTORY config launch worlds urdf
   DESTINATION share/${PROJECT_NAME}
 )
 

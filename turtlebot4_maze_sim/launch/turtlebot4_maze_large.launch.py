@@ -6,7 +6,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction, RegisterEventHandler, SetEnvironmentVariable, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, LaunchConfiguration, NotEqualsSubstitution, PathJoinSubstitution
 from launch_ros.actions import Node
 
 
@@ -51,7 +51,7 @@ def generate_launch_description():
     world_path = PathJoinSubstitution([
         pkg_turtlebot4_maze_sim,
         'worlds',
-        'maze_world.sdf'
+        'maze_world_large.sdf'
     ])
 
     model_arg = DeclareLaunchArgument(
@@ -80,6 +80,30 @@ def generate_launch_description():
         description='Launch the Gazebo GUI; set false for headless mode.'
     )
 
+    spawn_x_arg = DeclareLaunchArgument(
+        'spawn_x',
+        default_value='0.0',
+        description='Initial robot X position in the Gazebo world.'
+    )
+
+    spawn_y_arg = DeclareLaunchArgument(
+        'spawn_y',
+        default_value='0.0',
+        description='Initial robot Y position in the Gazebo world.'
+    )
+
+    spawn_z_arg = DeclareLaunchArgument(
+        'spawn_z',
+        default_value='0.15',
+        description='Initial robot Z position in the Gazebo world.'
+    )
+
+    spawn_yaw_arg = DeclareLaunchArgument(
+        'spawn_yaw',
+        default_value='0.0',
+        description='Initial robot yaw in radians in the Gazebo world.'
+    )
+
     robot_xacro = PathJoinSubstitution([
         pkg_turtlebot4_maze_sim,
         'urdf',
@@ -104,6 +128,54 @@ def generate_launch_description():
             {'robot_description': robot_description}
         ],
         remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')]
+    )
+
+    tf_namespaced_odom_publisher = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='tf_namespaced_odom_publisher',
+        namespace=LaunchConfiguration('robot_name'),
+        parameters=[{'use_sim_time': True}],
+        arguments=[
+            '0', '0', '0',
+            '0', '0', '0',
+            'odom', [LaunchConfiguration('robot_name'), '/odom']
+        ],
+        remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')],
+        output='screen',
+        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('robot_name'), ''))
+    )
+
+    tf_namespaced_base_link_publisher = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='tf_namespaced_base_link_publisher',
+        namespace=LaunchConfiguration('robot_name'),
+        parameters=[{'use_sim_time': True}],
+        arguments=[
+            '0', '0', '0',
+            '0', '0', '0',
+            [LaunchConfiguration('robot_name'), '/base_link'], 'base_link'
+        ],
+        remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')],
+        output='screen',
+        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('robot_name'), ''))
+    )
+
+    tf_namespaced_lidar_publisher = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='tf_namespaced_lidar_publisher',
+        namespace=LaunchConfiguration('robot_name'),
+        parameters=[{'use_sim_time': True}],
+        arguments=[
+            '0', '0', '0',
+            '0', '0', '0',
+            'rplidar_link', [LaunchConfiguration('robot_name'), '/rplidar_link/rplidar']
+        ],
+        remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')],
+        output='screen',
+        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('robot_name'), ''))
     )
 
     controller_manager = PathJoinSubstitution([
@@ -169,10 +241,10 @@ def generate_launch_description():
             '-world', LaunchConfiguration('world_name'),
             '-file', '/tmp/turtlebot4_maze_robot.urdf',
             '-name', LaunchConfiguration('robot_name'),
-            '-x', '0.0',
-            '-y', '0.0',
-            '-z', '0.15',
-            '-Y', '0.0'
+            '-x', LaunchConfiguration('spawn_x'),
+            '-y', LaunchConfiguration('spawn_y'),
+            '-z', LaunchConfiguration('spawn_z'),
+            '-Y', LaunchConfiguration('spawn_yaw')
         ],
         output='screen'
     )
@@ -210,9 +282,16 @@ def generate_launch_description():
         robot_name_arg,
         world_name_arg,
         gui_arg,
+        spawn_x_arg,
+        spawn_y_arg,
+        spawn_z_arg,
+        spawn_yaw_arg,
         LogInfo(msg='Launching TurtleBot4 maze world in Gazebo Harmonic'),
         generate_robot_urdf,
         robot_state_publisher,
+        tf_namespaced_odom_publisher,
+        tf_namespaced_base_link_publisher,
+        tf_namespaced_lidar_publisher,
         OpaqueFunction(function=create_sensor_bridge),
         world_server_gui,
         world_server_headless,
