@@ -13,6 +13,7 @@ from launch_ros.actions import Node
 def create_sensor_bridge(context):
     world_name = LaunchConfiguration('world_name').perform(context)
     robot_name = LaunchConfiguration('robot_name').perform(context)
+    namespace = LaunchConfiguration('namespace').perform(context)
     model_prefix = f'/world/{world_name}/model/{robot_name}'
     lidar_topic = f'{model_prefix}/link/rplidar_link/sensor/rplidar/scan'
     camera_prefix = f'{model_prefix}/link/oakd_rgb_camera_frame/sensor/rgbd_camera'
@@ -24,7 +25,7 @@ def create_sensor_bridge(context):
     return [Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        namespace=robot_name,
+        namespace=namespace,
         arguments=[
             f'{lidar_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
             f'{image_topic}@sensor_msgs/msg/Image[gz.msgs.Image',
@@ -65,6 +66,12 @@ def generate_launch_description():
         'robot_name',
         default_value='turtlebot4',
         description='Name of the robot entity in Gazebo Harmonic.'
+    )
+
+    namespace_arg = DeclareLaunchArgument(
+        'namespace',
+        default_value='',
+        description='ROS namespace for the robot topics. Leave empty for standard global topics.'
     )
 
     world_name_arg = DeclareLaunchArgument(
@@ -114,14 +121,14 @@ def generate_launch_description():
         'xacro ',
         robot_xacro,
         ' gazebo:=ignition namespace:=',
-        LaunchConfiguration('robot_name')
+        LaunchConfiguration('namespace')
     ])
 
     robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='robot_state_publisher',
-        namespace=LaunchConfiguration('robot_name'),
+        namespace=LaunchConfiguration('namespace'),
         output='screen',
         parameters=[
             {'use_sim_time': True},
@@ -134,55 +141,64 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='tf_namespaced_odom_publisher',
-        namespace=LaunchConfiguration('robot_name'),
+        namespace=LaunchConfiguration('namespace'),
         parameters=[{'use_sim_time': True}],
         arguments=[
             '0', '0', '0',
             '0', '0', '0',
-            'odom', [LaunchConfiguration('robot_name'), '/odom']
+            'odom', [LaunchConfiguration('namespace'), '/odom']
         ],
         remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')],
         output='screen',
-        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('robot_name'), ''))
+        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('namespace'), ''))
     )
 
     tf_namespaced_base_link_publisher = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='tf_namespaced_base_link_publisher',
-        namespace=LaunchConfiguration('robot_name'),
+        namespace=LaunchConfiguration('namespace'),
         parameters=[{'use_sim_time': True}],
         arguments=[
             '0', '0', '0',
             '0', '0', '0',
-            [LaunchConfiguration('robot_name'), '/base_link'], 'base_link'
+            [LaunchConfiguration('namespace'), '/base_link'], 'base_link'
         ],
         remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')],
         output='screen',
-        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('robot_name'), ''))
+        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('namespace'), ''))
     )
 
     tf_namespaced_lidar_publisher = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='tf_namespaced_lidar_publisher',
-        namespace=LaunchConfiguration('robot_name'),
+        namespace=LaunchConfiguration('namespace'),
         parameters=[{'use_sim_time': True}],
         arguments=[
             '0', '0', '0',
             '0', '0', '0',
-            'rplidar_link', [LaunchConfiguration('robot_name'), '/rplidar_link/rplidar']
+            'rplidar_link', [LaunchConfiguration('namespace'), '/rplidar_link/rplidar']
         ],
         remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')],
         output='screen',
-        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('robot_name'), ''))
+        condition=IfCondition(NotEqualsSubstitution(LaunchConfiguration('namespace'), ''))
     )
 
     controller_manager = PathJoinSubstitution([
         '/',
-        LaunchConfiguration('robot_name'),
+        LaunchConfiguration('namespace'),
         'controller_manager'
     ])
+
+    cmd_vel_relay = Node(
+        package='topic_tools',
+        executable='relay',
+        name='cmd_vel_relay',
+        namespace=LaunchConfiguration('namespace'),
+        arguments=['cmd_vel', 'diffdrive_controller/cmd_vel'],
+        output='screen'
+    )
 
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
@@ -217,7 +233,7 @@ def generate_launch_description():
         cmd=[
             'xacro', robot_xacro,
             'gazebo:=ignition',
-            ['namespace:=', LaunchConfiguration('robot_name')],
+            ['namespace:=', LaunchConfiguration('namespace')],
             '-o', '/tmp/turtlebot4_maze_robot.urdf'
         ],
         output='screen'
@@ -280,6 +296,7 @@ def generate_launch_description():
         SetEnvironmentVariable('GZ_SIM_SYSTEM_PLUGIN_PATH', library_paths),
         model_arg,
         robot_name_arg,
+        namespace_arg,
         world_name_arg,
         gui_arg,
         spawn_x_arg,
@@ -292,6 +309,7 @@ def generate_launch_description():
         tf_namespaced_odom_publisher,
         tf_namespaced_base_link_publisher,
         tf_namespaced_lidar_publisher,
+        cmd_vel_relay,
         OpaqueFunction(function=create_sensor_bridge),
         world_server_gui,
         world_server_headless,
