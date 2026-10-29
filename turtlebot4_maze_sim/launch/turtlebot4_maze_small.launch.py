@@ -36,7 +36,7 @@ def create_sensor_bridge(context):
         ],
         remappings=[
             (lidar_topic, 'scan'),
-            (image_topic, 'camera/image_raw'),
+            (image_topic, 'oakd/rgb/preview/image_raw'),
             (depth_topic, 'camera/depth/image_raw'),
             (camera_info_topic, 'camera/camera_info'),
             (battery_topic, 'battery_state')
@@ -49,11 +49,18 @@ def generate_launch_description():
     pkg_turtlebot4_maze_sim = get_package_share_directory('turtlebot4_maze_sim')
     pkg_turtlebot4_description = get_package_share_directory('turtlebot4_description')
 
-    world_path = PathJoinSubstitution([
+    default_world_path = PathJoinSubstitution([
         pkg_turtlebot4_maze_sim,
         'worlds',
         'maze_world_small.sdf'
     ])
+
+    world_path_arg = DeclareLaunchArgument(
+        'world_path',
+        default_value=default_world_path,
+        description='SDF world file to launch.'
+    )
+    world_path = LaunchConfiguration('world_path')
 
     model_arg = DeclareLaunchArgument(
         'model',
@@ -294,6 +301,7 @@ def generate_launch_description():
     return LaunchDescription([
         SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', resource_paths),
         SetEnvironmentVariable('GZ_SIM_SYSTEM_PLUGIN_PATH', library_paths),
+        world_path_arg,
         model_arg,
         robot_name_arg,
         namespace_arg,
